@@ -1,0 +1,50 @@
+# Fixture for the TypedStruct claim: the filter of step 07 with one typo
+# (max_tokenz), typed_config written as the proto type itself.
+# ci/test-typedstruct.sh records what admission and istioctl validate say.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: typo-direct
+  namespace: payments
+spec:
+  workloadSelector:
+    labels:
+      app: fraud-check
+  priority: 10
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        portNumber: 8080
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: http_local_rate_limiter
+          token_bucket:
+            max_tokenz: 5
+            tokens_per_fill: 5
+            fill_interval: 60s
+          filter_enabled:
+            runtime_key: local_rate_limit_enabled
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          filter_enforced:
+            runtime_key: local_rate_limit_enforced
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          response_headers_to_add:
+          - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+            header:
+              key: x-local-rate-limit
+              value: "true"

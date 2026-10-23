@@ -1,0 +1,14 @@
+# kind cluster for the lab: one control plane and one worker. Part 4 reads
+# proxy configuration rather than spreading traffic across nodes, so one
+# worker keeps the footprint small (the ztunnel DaemonSet still runs one pod
+# per node). Default kind networking (kindnet), pods 10.244.0.0/16,
+# Services 10.96.0.0/16. Node image pinned by digest: the default of kind
+# v0.33.0 (release notes).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: istio-p4
+nodes:
+- role: control-plane
+  image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+- role: worker
+  image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

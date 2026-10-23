@@ -1,0 +1,25 @@
+# Broken on purpose: the canary route without the "stable" fallback. Every
+# request without x-canary: true matches no route in the virtual host, and
+# the caller's sidecar answers 404 itself (response flag NR, details
+# route_not_found). The request never leaves payments-api.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check.payments.svc.cluster.local
+  http:
+  - name: canary
+    match:
+    - port: 8080
+      headers:
+        x-canary:
+          exact: "true"
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        port:
+          number: 8080
+        subset: v2

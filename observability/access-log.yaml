@@ -1,0 +1,12 @@
+# Mesh-wide access logs through the Telemetry API (the method the Istio
+# access log task recommends), with the "diag-log" provider declared in
+# istio/install.yaml. Applies to every sidecar, gateway and waypoint.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  accessLogging:
+  - providers:
+    - name: diag-log

@@ -1,0 +1,34 @@
+# Scope error: an EnvoyFilter in the root namespace (istio-system) with no
+# workloadSelector, no targetRefs and no context. It applies to every proxy
+# of the mesh, in every namespace, in every context (ANY): sidecars inbound and
+# outbound, and gateways. Step 07 counts the proxies that received it (6 of 7
+# Envoys in the lab: not the waypoint, which only takes EnvoyFilters through
+# targetRefs). The
+# filter_enabled fraction is left at its default, 0%, so it never limits
+# anything: the point is the blast radius, not the rate limit.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: mesh-wide-ratelimit
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: mesh_wide_probe
+          token_bucket:
+            max_tokens: 1000
+            tokens_per_fill: 1000
+            fill_interval: 1s

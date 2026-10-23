@@ -1,0 +1,22 @@
+# Broken on purpose: one letter off in the namespace of the host
+# ("payment" instead of "payments"). The API server accepts it, kubectl lists
+# it, and istiod does push it: with no Service of that name and no port, the
+# host gets its own virtual host, fraud-check.payment.svc.cluster.local:80, in
+# route config "80", routing to outbound|80|v2|..., a cluster that does not
+# exist (fraud-check has no port 80). No client sends that Host on port 80,
+# so nothing ever matches it, and all traffic to fraud-check:8080 keeps going
+# to every fraud-check pod.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check-typo
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check.payment.svc.cluster.local
+  http:
+  - name: all-to-v2
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        subset: v2

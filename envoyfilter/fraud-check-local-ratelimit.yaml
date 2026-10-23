@@ -1,0 +1,70 @@
+# Local rate limit on fraud-check: 5 requests per minute per pod, on port 8080
+# only (8090 stays unlimited). Istio has no native API for this in 1.31; the
+# official rate limit task uses an EnvoyFilter too.
+#
+# Where the patch lands, field by field:
+#   workloadSelector app=fraud-check  only the fraud-check pods (v1 and v2)
+#   context SIDECAR_INBOUND           the inbound listener (virtualInbound, 15006)
+#   portNumber 8080                   only the filter chains for destination port 8080
+#   filter http_connection_manager    inside the HTTP connection manager
+#   subFilter router + INSERT_BEFORE  right before the router, the last HTTP
+#                                     filter (after authn, RBAC and stats)
+# priority is set because INSERT_BEFORE is a relative operation:
+# istioctl analyze warns IST0151 without it.
+#
+# The typed_config uses the proto type directly (not udpa TypedStruct), so
+# the API server's validation decodes the value and WARNS about an unknown
+# field (it still accepts the resource; istiod then drops the field). Inside
+# a TypedStruct a typo gets no warning at all. Measured in step 07: with
+# max_tokens misspelled, either form is acknowledged by Envoy and limits
+# every request (a bucket of 0 tokens). ci/envoyfilter-lint.sh fails on the
+# warning (EF008).
+# filter_enabled and filter_enforced default to 0%: without them the filter
+# is in the config and limits nothing.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fraud-check-local-ratelimit
+  namespace: payments
+spec:
+  workloadSelector:
+    labels:
+      app: fraud-check
+  priority: 10
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        portNumber: 8080
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: http_local_rate_limiter
+          token_bucket:
+            max_tokens: 5
+            tokens_per_fill: 5
+            fill_interval: 60s
+          filter_enabled:
+            runtime_key: local_rate_limit_enabled
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          filter_enforced:
+            runtime_key: local_rate_limit_enforced
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          response_headers_to_add:
+          - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+            header:
+              key: x-local-rate-limit
+              value: "true"

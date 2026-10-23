@@ -1,0 +1,40 @@
+# Broken on purpose: a subset whose labels match no pod (nothing runs with
+# version: v3). istiod still creates the cluster
+# outbound|8080|v3|fraud-check.payments.svc.cluster.local, with zero
+# endpoints, and the route sends traffic to it: 503 from the caller's sidecar.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  host: fraud-check.payments.svc.cluster.local
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  - name: v3
+    labels:
+      version: v3
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check.payments.svc.cluster.local
+  http:
+  - name: v3-rollout
+    match:
+    - port: 8080
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        port:
+          number: 8080
+        subset: v3

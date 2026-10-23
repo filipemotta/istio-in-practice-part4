@@ -1,0 +1,37 @@
+# VirtualService -> routes. The two HTTP routes below become two routes, in
+# this order, inside the virtual host fraud-check.payments.svc.cluster.local:8080
+# of the route configuration "8080" (the outbound HTTP listener 0.0.0.0_8080
+# loads it over RDS). The route name in Envoy is the "name" given here.
+# Port 8080 is explicit in the match and in the destination: fraud-check
+# exposes two ports, and without it istioctl analyze reports IST0112 and the
+# routes are also generated for port 8090 (and route config 80).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check.payments.svc.cluster.local
+  http:
+  - name: canary
+    match:
+    - port: 8080
+      headers:
+        x-canary:
+          exact: "true"
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        port:
+          number: 8080
+        subset: v2
+  - name: stable
+    match:
+    - port: 8080
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        port:
+          number: 8080
+        subset: v1

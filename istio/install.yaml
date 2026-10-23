@@ -1,0 +1,28 @@
+# Istio 1.31 control plane with the ambient profile: istiod + istio-cni +
+# ztunnel. The same control plane serves the sidecar namespace (payments,
+# istio-injection=enabled) and the ambient one (payments-ambient,
+# istio.io/dataplane-mode=ambient).
+#
+# No meshConfig.accessLogFile here: access logs are switched on with the
+# Telemetry API (observability/access-log.yaml), using the "diag-log"
+# provider below. Its format puts the fields this part reads on every line,
+# as key=value pairs: the response flags, the response code details, the
+# upstream cluster and the route name. The cluster is logged twice:
+# %UPSTREAM_CLUSTER_RAW% is its name; %UPSTREAM_CLUSTER% is its
+# alt_stat_name, which Istio sets to the name plus ";" (the delimiter of its
+# stat prefixes), so it ends in ";".
+#
+# Install with: istioctl install -y -f istio/install.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio
+spec:
+  profile: ambient
+  meshConfig:
+    extensionProviders:
+    - name: diag-log
+      envoyFileAccessLog:
+        path: /dev/stdout
+        logFormat:
+          text: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% flags=%RESPONSE_FLAGS% details=%RESPONSE_CODE_DETAILS% cluster=%UPSTREAM_CLUSTER_RAW% statname=%UPSTREAM_CLUSTER% route=%ROUTE_NAME% upstream=%UPSTREAM_HOST% authority=%REQ(:AUTHORITY)% sni=%REQUESTED_SERVER_NAME% dst=%DOWNSTREAM_LOCAL_ADDRESS%\n"

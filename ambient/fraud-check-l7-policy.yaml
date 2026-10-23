@@ -1,0 +1,22 @@
+# L7 authorization for fraud-check, attached to the Service with targetRefs:
+# the waypoint enforces it (waypoints ignore selector policies). payments-api
+# may GET /v1/check*; anything else gets 403 from the waypoint's RBAC filter.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: fraud-check-l7
+  namespace: payments-ambient
+spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: fraud-check
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/payments-ambient/sa/payments-api"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/v1/check", "/v1/check/*"]

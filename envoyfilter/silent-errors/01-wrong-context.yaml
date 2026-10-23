@@ -1,0 +1,47 @@
+# Silent error: SIDECAR_OUTBOUND instead of SIDECAR_INBOUND. Accepted by the
+# API server; fraud-check's inbound listener does not change and its callers are
+# never limited. The patch does land somewhere: on fraud-check's OUTBOUND
+# listener for port 8080, the one fraud-check uses to call risk-score:8080, so
+# fraud-check's own calls to its dependency get limited instead.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fraud-check-ratelimit-outbound
+  namespace: payments
+spec:
+  workloadSelector:
+    labels:
+      app: fraud-check
+  priority: 10
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_OUTBOUND
+      listener:
+        portNumber: 8080
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: http_local_rate_limiter
+          token_bucket:
+            max_tokens: 5
+            tokens_per_fill: 5
+            fill_interval: 60s
+          filter_enabled:
+            runtime_key: local_rate_limit_enabled
+            default_value:
+              numerator: 100
+              denominator: HUNDRED
+          filter_enforced:
+            runtime_key: local_rate_limit_enforced
+            default_value:
+              numerator: 100
+              denominator: HUNDRED

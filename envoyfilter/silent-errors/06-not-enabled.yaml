@@ -1,0 +1,35 @@
+# Silent error: the right place, no filter_enabled / filter_enforced. Both
+# default to 0% of requests in Envoy's LocalRateLimit, so the filter is in the
+# listener exactly where it should be and never limits a request.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: fraud-check-ratelimit-disabled
+  namespace: payments
+spec:
+  workloadSelector:
+    labels:
+      app: fraud-check
+  priority: 10
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        portNumber: 8080
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: http_local_rate_limiter
+          token_bucket:
+            max_tokens: 5
+            tokens_per_fill: 5
+            fill_interval: 60s

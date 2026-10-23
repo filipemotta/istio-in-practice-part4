@@ -1,0 +1,27 @@
+# Lint fixture: a namespace-wide EnvoyFilter on purpose (no workloadSelector),
+# with the intent made explicit by the annotation, an explicit context and a
+# priority. The lint accepts it; without the annotation it fails with EF001.
+# The patch is a MERGE on the HTTP connection manager of inbound listeners.
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: payments-inbound-hcm-tweaks
+  namespace: payments
+  annotations:
+    envoyfilter-lint/allow-wide-scope: "true"
+spec:
+  priority: 10
+  configPatches:
+  - applyTo: NETWORK_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+    patch:
+      operation: MERGE
+      value:
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          server_header_transformation: PASS_THROUGH

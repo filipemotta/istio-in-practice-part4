@@ -1,0 +1,17 @@
+# AuthorizationPolicy -> an RBAC filter (envoy.filters.http.rbac) in the
+# HTTP filter chain of fraud-check's inbound listener, ahead of the router.
+# The policy shows up in it as ns[payments]-policy[fraud-check-allow]-rule[0].
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: fraud-check-allow
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: fraud-check
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/payments/sa/payments-api"]

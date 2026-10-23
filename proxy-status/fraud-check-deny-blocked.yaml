@@ -1,0 +1,19 @@
+# A policy to see whether fraud-check's inbound listener is up to date: it
+# denies GET /blocked. While the proxy rejects its listener updates (step 05)
+# the policy is in the API server and not in the proxy, and /blocked keeps
+# answering 200.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: fraud-check-deny-blocked
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: fraud-check
+  action: DENY
+  rules:
+  - to:
+    - operation:
+        ports: ["8080"]
+        paths: ["/blocked"]

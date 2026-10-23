@@ -1,0 +1,11 @@
+# PeerAuthentication -> inbound filter chains. Under STRICT the inbound
+# listener (virtualInbound, 0.0.0.0:15006) of every pod in the namespace
+# keeps only the filter chains that require mTLS; the plain-text ones go.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: payments
+spec:
+  mtls:
+    mode: STRICT

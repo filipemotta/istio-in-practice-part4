@@ -1,0 +1,18 @@
+# ServiceEntry -> a cluster and a filter chain. The external host gets the
+# cluster outbound|443||api.github.com (STRICT_DNS: resolution DNS), and the
+# outbound listener for port 443 gets a filter chain that matches the TLS SNI
+# api.github.com.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: github-api
+  namespace: payments
+spec:
+  hosts:
+  - api.github.com
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS

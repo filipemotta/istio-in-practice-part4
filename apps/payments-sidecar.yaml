@@ -1,0 +1,246 @@
+# Sidecar-mode namespace: every new pod gets an istio-proxy (Envoy) injected
+# by the istiod mutating webhook. This is where Part 4 reads the Envoy
+# configuration: listeners, routes, clusters and endpoints.
+#   payments-api  -> fraud-check (v1: 2 pods, v2: 1 pod) -> risk-score
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: payments-api
+  namespace: payments
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fraud-check
+  namespace: payments
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: risk-score
+  namespace: payments
+---
+# payments-api is the caller of fraud-check and the backend of the ingress
+# Gateway. The "app" container is curl standing in for the service code (it
+# makes the outbound calls). The "load" container is a fortio echo server on
+# 9080 that answers the requests reaching payments-api through its Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  selector:
+    app: payments-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 9080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+        version: v1
+      annotations:
+        # Istio records only a minimal set of Envoy stats by default
+        # (cluster_manager, listener_manager, server, cluster.xds-grpc).
+        # This proxy also records the stats of its fraud-check clusters
+        # (upstream_rq_*, membership_*), read in step 06. The risk-score
+        # clusters are left out on purpose: their per-cluster stats do not
+        # exist in this proxy.
+        proxy.istio.io/config: |-
+          proxyStatsMatcher:
+            inclusionRegexps:
+            - ".*fraud-check.*"
+    spec:
+      serviceAccountName: payments-api
+      containers:
+      - name: app
+        image: curlimages/curl:8.23.0
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+      - name: load
+        image: fortio/fortio:1.76.0
+        # fortio's image has no shell; "server" keeps the container running.
+        args: ["server", "-http-port", "9080", "-grpc-port", "disabled", "-redirect-port", "disabled", "-tcp-port", "disabled", "-udp-port", "disabled"]
+        ports:
+        - containerPort: 9080
+        readinessProbe:
+          httpGet:
+            path: /debug
+            port: 9080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+---
+# fraud-check: fortio echo server. Status and latency come from the query
+# string (?status=503). -loglevel Verbose logs one JSON line per request, so
+# the lab can count the requests that reached the application. Port 8090 is
+# fraud-check calling its own dependency: fortio's multi-server proxy (-M)
+# forwards the request to risk-score:8080 through fraud-check's sidecar and
+# returns its status.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  selector:
+    app: fraud-check
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: http-score
+    port: 8090
+    targetPort: 8090
+---
+# Two Deployments behind the same Service, told apart by the "version" label:
+# the DestinationRule subsets of step 03 select on it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-check
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: fraud-check
+        version: v1
+      annotations:
+        # The local rate limit stats of step 07 (the rate limit task's
+        # inclusion regexp).
+        proxy.istio.io/config: |-
+          proxyStatsMatcher:
+            inclusionRegexps:
+            - ".*http_local_rate_limit.*"
+    spec:
+      serviceAccountName: fraud-check
+      containers:
+      - name: fortio
+        image: fortio/fortio:1.76.0
+        args: ["server", "-loglevel", "Verbose", "-M", "8090 http://risk-score:8080"]
+        ports:
+        - containerPort: 8080
+        - containerPort: 8090
+        readinessProbe:
+          httpGet:
+            path: /debug
+            port: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-check-v2
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-check
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: fraud-check
+        version: v2
+      annotations:
+        proxy.istio.io/config: |-
+          proxyStatsMatcher:
+            inclusionRegexps:
+            - ".*http_local_rate_limit.*"
+    spec:
+      serviceAccountName: fraud-check
+      containers:
+      - name: fortio
+        image: fortio/fortio:1.76.0
+        args: ["server", "-loglevel", "Verbose", "-M", "8090 http://risk-score:8080"]
+        ports:
+        - containerPort: 8080
+        - containerPort: 8090
+        readinessProbe:
+          httpGet:
+            path: /debug
+            port: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+---
+# risk-score: the dependency of fraud-check. Same fortio echo server.
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-score
+  namespace: payments
+spec:
+  selector:
+    app: risk-score
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-score
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: risk-score
+  template:
+    metadata:
+      labels:
+        app: risk-score
+        version: v1
+    spec:
+      serviceAccountName: risk-score
+      containers:
+      - name: fortio
+        image: fortio/fortio:1.76.0
+        args: ["server", "-loglevel", "Verbose"]
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /debug
+            port: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi

@@ -1,0 +1,18 @@
+# DestinationRule -> clusters. Each subset becomes its own Envoy cluster,
+# outbound|8080|v1|fraud-check.payments.svc.cluster.local and |v2|, in every
+# proxy that can reach fraud-check; the endpoints of each one are the pods
+# whose labels match the subset.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  host: fraud-check.payments.svc.cluster.local
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2

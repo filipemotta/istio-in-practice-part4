@@ -1,0 +1,25 @@
+# Broken on purpose: "gateways" added to expose the route at the edge. A
+# VirtualService with a gateways list applies only to those gateways; the
+# sidecars (the reserved gateway name "mesh") are dropped unless "mesh" is
+# listed too. The name here is a Gateway API Gateway, which a VirtualService
+# cannot bind to anyway, so the route lands nowhere.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check-edge
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check.payments.svc.cluster.local
+  gateways:
+  - payments-ingress/payments-gateway
+  http:
+  - name: all-to-v2
+    match:
+    - port: 8080
+    route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local
+        port:
+          number: 8080
+        subset: v2

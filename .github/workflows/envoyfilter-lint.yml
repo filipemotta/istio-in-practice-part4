@@ -1,0 +1,28 @@
+# Offline checks on every push and pull request. No cluster needed.
+# In your own repository, point the lint at the EnvoyFilters you apply, e.g.:
+#   bash ci/envoyfilter-lint.sh deploy/
+name: envoyfilter-lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  envoyfilter-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      # actions/checkout v7.0.1, pinned to the commit SHA of the tag
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Pinned istioctl, kubectl, kind and yq into ./bin
+        run: bash tools/install-cli.sh
+      - name: envoyfilter-lint test suite (the working filter passes, each silent error fails with its own code)
+        run: bash ci/test-envoyfilter-lint.sh
+      - name: envoyfilter-lint on the filter the lab applies
+        run: bash ci/envoyfilter-lint.sh envoyfilter/fraud-check-local-ratelimit.yaml
+      - name: Context guard (lab scripts refuse any context that is not a local kind cluster)
+        run: bash ci/test-context-guard.sh
