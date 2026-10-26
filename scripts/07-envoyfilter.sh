@@ -168,7 +168,9 @@ for form in direct typedstruct; do
     expect_eq "direct: Envoy never saw the field (server.dynamic_unknown_fields +0)" "0" "${unk}"
   else
     expect_eq "typedstruct: Envoy counted it, once per filter chain (server.dynamic_unknown_fields +2)" "2" "${unk}"
-    plog="$(k -n payments logs "${V2}" -c istio-proxy --since=2m || true)"
+    # The protobuf parse error pads its words with a varying number of spaces
+    # ("no   such field:  'max_tokenz'"), so squeeze them before matching.
+    plog="$(k -n payments logs "${V2}" -c istio-proxy --since=2m | tr -s ' ' || true)"
     wl="$(grep -F "no such field: 'max_tokenz'" <<< "${plog}" | tail -1 || true)"
     note "${wl:0:300}"
     expect_match "typedstruct: Envoy logs a warning with the field" "Unknown field: type envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit.*no such field: 'max_tokenz'" "${wl}"
