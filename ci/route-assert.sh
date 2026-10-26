@@ -38,7 +38,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 # The context is required: a CI job must say which cluster it reads.
-[ -n "${CONTEXT}" ] && [ "$#" -eq 5 ] && [[ "${WAIT}" =~ ^[0-9]+$ ]] || usage
+if [ -z "${CONTEXT}" ] || [ "$#" -ne 5 ] || [[ ! "${WAIT}" =~ ^[0-9]+$ ]]; then usage; fi
 NS="$1" TARGET="$2" VHOST="$3" ROUTE="$4" CLUSTER="$5"
 for t in istioctl jq; do
   command -v "${t}" >/dev/null || { echo "missing tool: ${t} (run tools/install-cli.sh)" >&2; exit 2; }
