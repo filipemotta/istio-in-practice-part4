@@ -96,6 +96,9 @@ ci/test-envoyfilter-lint.sh     tests for the lint: the working filter passes, e
 ci/testdata/                    lint fixtures (the official task's filter verbatim, a namespace-wide filter on purpose,
                                 the step 07 filter with max_tokens misspelled, as proto and as TypedStruct)
 ci/test-typedstruct.sh          istioctl validate on a field typo, proto form vs TypedStruct form
+ci/vs-host-lint.sh              offline: every VirtualService host must be a Service or ServiceEntry (VS001)
+ci/test-vs-host-lint.sh         tests for it: the canary passes, the host typo of step 04 fails, short names and wildcards
+ci/route-assert.sh              after a rollout: the caller's virtual host holds the named route to the expected cluster
 ci/test-context-guard.sh        every lab step refuses a context that is not a local kind cluster
 scripts/by-hand-check.sh        runs the "By hand" blocks of this README as printed and checks their output
 .github/workflows/envoyfilter-lint.yml   GitHub Actions example running the offline tests
@@ -276,6 +279,8 @@ subset v3 (no pods)        cluster outbound|8080|v3|... exists, 0 endpoints
 VS host typo (payment)     accepted and pushed: route config 80, vhost fraud-check.payment.svc.cluster.local:80,
                            all-to-v2 -> outbound|80|v2|... (no such cluster); route config 8080 untouched;
                            12 requests: all route=default, cluster outbound|8080||...; istioctl analyze: nothing about the host
+                           the virtual host fraud-check...:8080 is in payments-api's routes (a host-presence gate passes);
+                           ci/route-assert.sh all-to-v2 -> v2: exit 1, "default -> outbound|8080||..."; ci/vs-host-lint.sh: VS001
 VS with gateways only      in no route config of payments-api nor of the ingress gateway
                            istioctl analyze: IST0101 Referenced gateway not found: "payments-ingress/payments-gateway",
                              IST0132 host not found in Gateway
@@ -429,8 +434,8 @@ apply it gave `200=5 429=3` every time it was measured.
 ### Totals
 
 Final run from no cluster (the "By hand" final block: `bash scripts/test-all.sh`
-then `bash scripts/teardown.sh`), all steps passed: 43 offline assertions
-(`ci/`) + 227 in the lab and by hand = 270, in 750 seconds (step 07 is the
+then `bash scripts/teardown.sh`), all steps passed: 55 offline assertions
+(`ci/`) + 233 in the lab and by hand = 288, in 782 seconds (step 07 is the
 longest, 332 s: it waits for old filter chains to drain before each burst).
 
 ## The silent errors
@@ -503,6 +508,47 @@ selects no pods), IST0101 and IST0132 (a VirtualService bound to a gateway
 that is not an Istio Gateway), and IST0112 (a destination without port on a
 multi-port Service); it said nothing about the VirtualService whose host has a
 typo.
+
+## VirtualService checks in CI
+
+A VirtualService whose host has a typo (`broken/03-vs-wrong-host.yaml`) is
+accepted by the API server, pushed by istiod as a virtual host of its own, and
+not reported by `istioctl analyze`. Two checks catch it, one before the
+rollout and one after.
+
+Before, with no cluster: `ci/vs-host-lint.sh` resolves every host of the
+VirtualServices you give it (a short name in the namespace of the
+VirtualService, as the VirtualService reference says) and fails with `VS001`
+when no Service or ServiceEntry in the same input has that host. Feed it your
+manifests, or a dump of the live registry:
+
+```bash
+bash ci/vs-host-lint.sh apps/ translation/                      # passes
+bash ci/vs-host-lint.sh apps/ broken/03-vs-wrong-host.yaml      # VS001, exit 1
+kubectl get service,serviceentry -A -o yaml > registry.yaml     # in your pipeline
+bash ci/vs-host-lint.sh registry.yaml deploy/
+```
+
+VirtualServices bound only to gateways are skipped; a short name is a `VS101`
+warning.
+
+After, against the cluster: checking that the expected host is in the
+caller's routes is not enough. `fraud-check.payments.svc.cluster.local:8080`
+is there from the Service alone, with Istio's route `default`, typo or not.
+`ci/route-assert.sh` checks the content: the virtual host must hold a route
+with the name you gave the HTTP route in the VirtualService, sending to the
+cluster you expect. It retries for `--wait` seconds while istiod pushes.
+
+```bash
+bash ci/route-assert.sh --context <staging context> payments deployment/payments-api \
+  fraud-check.payments.svc.cluster.local:8080 canary \
+  'outbound|8080|v2|fraud-check.payments.svc.cluster.local'
+```
+
+Step 03 runs it on the canary (passes for `canary` and `stable`, fails for a
+wrong cluster) and step 04 on the typo (fails, and prints the `default` route
+the virtual host still holds). It only reads `istioctl proxy-config route`, and
+`--context` is required.
 
 ## Teardown
 

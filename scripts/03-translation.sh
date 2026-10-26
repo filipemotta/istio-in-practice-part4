@@ -79,6 +79,18 @@ expect_eq "access log: with the header -> route canary, cluster v2" "canary outb
   "$(kv route "$(grep -F /canary <<< "${log}")") $(kv cluster "$(grep -F /canary <<< "${log}")")"
 expect_eq "access log: without it -> route stable, cluster v1" "stable outbound|8080|v1|${FQDN}" \
   "$(kv route "$(grep -F /stable <<< "${log}")") $(kv cluster "$(grep -F /stable <<< "${log}")")"
+# The same facts as a CI gate after a rollout (ci/route-assert.sh): exit 0
+# when the virtual host holds the named route to the cluster, 1 when not.
+ra() { bash "${REPO_ROOT}/ci/route-assert.sh" --context "${KUBE_CONTEXT}" --wait 0 payments deployment/payments-api "${FQDN}:8080" "$@" 2>&1; }
+out="$(ra canary "outbound|8080|v2|${FQDN}")" && rc=0 || rc=$?
+note "${out}"
+expect_eq "ci/route-assert.sh: canary -> v2 passes" "0" "${rc}"
+out="$(ra stable "outbound|8080|v1|${FQDN}")" && rc=0 || rc=$?
+expect_eq "ci/route-assert.sh: stable -> v1 passes" "0" "${rc}"
+out="$(ra canary "outbound|8080|v1|${FQDN}")" && rc=0 || rc=$?
+printf '%s\n' "${out}" | show
+expect_eq "ci/route-assert.sh: canary -> v1 fails, listing what the virtual host holds" "1 2" \
+  "${rc} $(grep -cE '^  (canary|stable) -> ' <<< "${out}" || true)"
 
 step "ServiceEntry api.github.com:443 TLS, resolution DNS (translation/30-serviceentry-github.yaml)"
 before="$(snapshot "${CALLER}")"

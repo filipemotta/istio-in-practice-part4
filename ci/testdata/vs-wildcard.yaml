@@ -1,0 +1,18 @@
+# vs-host-lint fixture: a wildcard host passes when a known host matches it
+# (api.github.com, from translation/30-serviceentry-github.yaml).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: github-timeout
+  namespace: payments
+spec:
+  hosts:
+  - "*.github.com"
+  tls:
+  - match:
+    - port: 443
+      sniHosts:
+      - api.github.com
+    route:
+    - destination:
+        host: api.github.com

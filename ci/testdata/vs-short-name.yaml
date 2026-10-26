@@ -1,0 +1,29 @@
+# vs-host-lint fixture: a short name. "fraud-check" in namespace payments
+# resolves to fraud-check.payments.svc.cluster.local, which exists (VS101 only).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check-short
+  namespace: payments
+spec:
+  hosts:
+  - fraud-check
+  http:
+  - route:
+    - destination:
+        host: fraud-check
+---
+# The same short name from another namespace resolves there, not to the
+# Service: fraud-check.payments-ingress.svc.cluster.local does not exist (VS001).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: fraud-check-short
+  namespace: payments-ingress
+spec:
+  hosts:
+  - fraud-check
+  http:
+  - route:
+    - destination:
+        host: fraud-check.payments.svc.cluster.local

@@ -9,9 +9,9 @@ start="$(date +%s)"
 failed=()
 
 # Offline checks first: they need no cluster (the EnvoyFilter lint and its
-# tests, the context guard).
+# tests, the VirtualService host lint and its tests, the context guard).
 bash "${DIR}/../tools/install-cli.sh" >/dev/null
-for t in test-envoyfilter-lint test-typedstruct test-context-guard; do
+for t in test-envoyfilter-lint test-typedstruct test-vs-host-lint test-context-guard; do
   printf '\n######## ci/%s ########\n' "${t}"
   if ! bash "${DIR}/../ci/${t}.sh"; then
     failed+=("ci/${t}")

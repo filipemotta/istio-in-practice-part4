@@ -86,6 +86,20 @@ expect_eq "12 requests: all through route default to the subset-less cluster" "1
 an="$(ictl analyze -n payments 2>&1 || true)"
 printf '%s\n' "${an}" | show
 expect_no_match "istioctl analyze says nothing about the host typo" 'fraud-check\.payment\.svc' "${an}"
+# A CI gate that only checks that the expected host is in the caller's routes
+# passes here: the virtual host is there, from the Service alone. The content
+# is what changed, or rather did not: ci/route-assert.sh fails and shows it.
+expect_eq "the expected virtual host is in payments-api's routes anyway (host presence passes)" "1" \
+  "$(pc route "${CALLER}" payments | jq --arg v "${FQDN}:8080" '[.[].virtualHosts[]? | select(.name == $v)] | length')"
+out="$(bash "${REPO_ROOT}/ci/route-assert.sh" --context "${KUBE_CONTEXT}" --wait 10 payments deployment/payments-api \
+  "${FQDN}:8080" all-to-v2 "outbound|8080|v2|${FQDN}" 2>&1)" && rc=0 || rc=$?
+printf '%s\n' "${out}" | show
+expect_eq "ci/route-assert.sh: all-to-v2 -> v2 fails, the virtual host still holds route default" "1 1" \
+  "${rc} $(grep -cxF "  default -> outbound|8080||${FQDN}" <<< "${out}" || true)"
+out="$(bash "${REPO_ROOT}/ci/vs-host-lint.sh" "${REPO_ROOT}/apps" "${REPO_ROOT}/broken/03-vs-wrong-host.yaml" 2>&1)" && rc=0 || rc=$?
+note "${out%%$'\n'*}"
+expect_eq "ci/vs-host-lint.sh would have stopped it before the rollout (VS001, no cluster needed)" "1 1" \
+  "${rc} $(grep -c '^ERROR VS001 .*fraud-check.payment.svc.cluster.local' <<< "${out}" || true)"
 k -n payments delete virtualservice fraud-check-typo >/dev/null
 
 step "Nowhere: gateways set, mesh dropped (broken/04-vs-gateway-drops-mesh.yaml)"

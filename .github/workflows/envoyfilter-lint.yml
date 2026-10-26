@@ -24,5 +24,9 @@ jobs:
         run: bash ci/test-envoyfilter-lint.sh
       - name: envoyfilter-lint on the filter the lab applies
         run: bash ci/envoyfilter-lint.sh envoyfilter/fraud-check-local-ratelimit.yaml
+      - name: vs-host-lint test suite (the canary passes, the host typo fails with VS001)
+        run: bash ci/test-vs-host-lint.sh
+      - name: vs-host-lint on the lab's VirtualServices against its Services
+        run: bash ci/vs-host-lint.sh apps/ translation/
       - name: Context guard (lab scripts refuse any context that is not a local kind cluster)
         run: bash ci/test-context-guard.sh
