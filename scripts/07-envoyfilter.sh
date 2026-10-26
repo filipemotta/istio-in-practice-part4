@@ -168,9 +168,13 @@ for form in direct typedstruct; do
     expect_eq "direct: Envoy never saw the field (server.dynamic_unknown_fields +0)" "0" "${unk}"
   else
     expect_eq "typedstruct: Envoy counted it, once per filter chain (server.dynamic_unknown_fields +2)" "2" "${unk}"
-    wl="$(k -n payments logs "${V2}" -c istio-proxy --since=2m | grep -F "no such field: 'max_tokenz'" | tail -1 || true)"
+    plog="$(k -n payments logs "${V2}" -c istio-proxy --since=2m || true)"
+    wl="$(grep -F "no such field: 'max_tokenz'" <<< "${plog}" | tail -1 || true)"
     note "${wl:0:300}"
     expect_match "typedstruct: Envoy logs a warning with the field" "Unknown field: type envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit.*no such field: 'max_tokenz'" "${wl}"
+    # On a miss, show what the proxy did log, so the next run says why.
+    [ -n "${wl}" ] || grep -E "max_tokenz|Unknown field|unknown field" <<< "${plog}" | tail -5 | cut -c1-600 | show || true
+    [ -n "${wl}" ] || note "istio-proxy log, last 2m: $(wc -l <<< "${plog}") lines"
   fi
   delete_file "${REPO_ROOT}/ci/testdata/ef-typo-${form}.yaml"
   wait_for 60 "0" ratelimit_pods || true
